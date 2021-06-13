@@ -125,7 +125,7 @@ pub fn run () {
         gl::STATIC_DRAW,
         vec![gl::FLOAT, gl::FLOAT, gl::FLOAT],
         vec![3, 3, 2],
-        FLOAT_NUM as i32 * mem::size_of::<GLfloat>() as GLsizei,
+        (FLOAT_NUM * mem::size_of::<GLfloat>()) as GLsizei,
         VERTEX_NUM as i32,
     );
 
