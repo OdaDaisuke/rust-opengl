@@ -27,7 +27,7 @@ type Vector3 = cgmath::Vector3<f32>;
 type Matrix4 = cgmath::Matrix4<f32>;
 
 const WINDOW_WIDTH: u32 = 900;
-const WINDOW_HEIGHT: u32 = 480;
+const WINDOW_HEIGHT: u32 = 700;
 const FLOAT_NUM: usize = 8;
 const VERTEX_NUM: usize = 36;
 const BUF_LEN: usize = FLOAT_NUM * VERTEX_NUM;
@@ -57,7 +57,7 @@ pub fn run () {
     let _gl_context = window.gl_create_context().unwrap();
     gl::load_with(|s| video_subsystem.gl_get_proc_address(s) as _);
     let mut image_manager = ImageManager::new();
-    image_manager.load_image(Path::new("./rsc/image.png"), "surface", true);
+    image_manager.load_image(Path::new("./rsc/image.jpg"), "surface", true);
 
     let shader = Shader::new("./rsc/shader/shader.vs", "./rsc/shader/shader.fs");
 
@@ -271,7 +271,6 @@ pub fn run () {
             imgui::Window::new(im_str!("Information"))
                 .size([300.0, 300.0], imgui::Condition::FirstUseEver)
                 .build(&ui, || {
-                    ui.text(im_str!("Hello, World!"));
                     ui.separator();
                     ui.text(im_str!("FPS: {:.1}", ui.io().framerate));
                     let display_size = ui.io().display_size;
