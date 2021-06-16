@@ -291,16 +291,13 @@ pub fn run () {
                     ui.separator();
                     #[rustfmt::skip]
                     imgui::Slider::new(im_str!("Camera X"))
-                        .range(-5.0..=5.0)
-                        .build(&ui, &mut camera_x);
+                        .range(-5.0..=5.0).build(&ui, &mut camera_x);
                     #[rustfmt::skip]
                     imgui::Slider::new(im_str!("Camera Y"))
-                        .range(-5.0..=5.0)
-                        .build(&ui, &mut camera_y);
+                        .range(-5.0..=5.0).build(&ui, &mut camera_y);
                     #[rustfmt::skip]
                     imgui::Slider::new(im_str!("Camera Z"))
-                        .range(-5.0..=5.0)
-                        .build(&ui, &mut camera_z);                    
+                        .range(-5.0..=5.0).build(&ui, &mut camera_z);                    
                 });
                 imgui::Window::new(im_str!("Light"))
                 .size([300.0, 450.0], imgui::Condition::FirstUseEver)
