@@ -11,10 +11,12 @@ use imgui::im_str;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
 
+mod frame_buffer;
 mod image_manager;
 mod shader;
 mod vertex;
 
+use frame_buffer::FrameBuffer;
 use image_manager::ImageManager;
 use shader::Shader;
 use vertex::Vertex;
@@ -26,11 +28,18 @@ type Vector3 = cgmath::Vector3<f32>;
 #[allow(dead_code)]
 type Matrix4 = cgmath::Matrix4<f32>;
 
-const WINDOW_WIDTH: u32 = 900;
+const WINDOW_WIDTH: u32 = 1100;
 const WINDOW_HEIGHT: u32 = 700;
 const FLOAT_NUM: usize = 8;
 const VERTEX_NUM: usize = 36;
 const BUF_LEN: usize = FLOAT_NUM * VERTEX_NUM;
+
+enum ShaderMode {
+    General,
+    Sphere,
+    Bloom,
+    RetroTV,
+}
 
 const ZERO: f32 = 0.0;
 const ONE: f32 = 1.0;
@@ -56,6 +65,45 @@ pub fn run () {
     
     let _gl_context = window.gl_create_context().unwrap();
     gl::load_with(|s| video_subsystem.gl_get_proc_address(s) as _);
+
+    let mut shader_mode = ShaderMode::General;
+
+    #[rustfmt::skip]
+    let screen_shader = Shader::new(
+        "./rsc/shader/screen_shader.vs",
+        "./rsc/shader/screen_shader.fs"
+    );
+    let screen_shader_sphere = Shader::new(
+        "./rsc/shader/screen_shader_sphere.vs",
+        "./rsc/shader/screen_shader_sphere.fs",
+    );
+    let screen_shader_bloom = Shader::new(
+        "./rsc/shader/screen_shader_bloom.vs",
+        "./rsc/shader/screen_shader_bloom.fs",
+    );
+    let screen_shader_retro_tv = Shader::new(
+        "./rsc/shader/screen_shader_retro_tv.vs",
+        "./rsc/shader/screen_shader_retro_tv.fs",
+    );
+
+    let frame_buffer = FrameBuffer::new(WINDOW_WIDTH, WINDOW_HEIGHT);
+    let vertex_vec = new_screen_vertex_vec(-1.0, -1.0, 1.0, 1.0, 20);
+
+    let screen_vertex = Vertex::new(
+        (vertex_vec.len() * mem::size_of::<GLfloat>()) as GLsizeiptr,
+        vertex_vec.as_ptr() as *const c_void,
+        gl::STATIC_DRAW,
+        vec![gl::FLOAT, gl::FLOAT],
+        vec![3, 2],
+        5 * mem::size_of::<GLfloat>() as GLsizei,
+        20 * 20 * 2 * 3
+    );
+
+    let mut depth_test_frame:bool = true;
+    let mut blend_frame: bool = true;
+    let mut wireframe_frame: bool = false;
+    let mut culling_frame: bool = true;
+
     let mut image_manager = ImageManager::new();
     image_manager.load_image(Path::new("./rsc/image.jpg"), "surface", true);
 
@@ -175,6 +223,9 @@ pub fn run () {
     };
     let surface_texture_id = image_manager.get_texture_id("surface");
 
+    let start_time = std::time::Instant::now();
+    let mut debug_window_mode = true;
+
     let mut event_pump = sdl_context.event_pump().unwrap();
     'running: loop {
         for event in event_pump.poll_iter() {
@@ -194,6 +245,7 @@ pub fn run () {
         }
 
         unsafe {
+            frame_buffer.bind_as_frame_buffer();
             if depth_test {
                 gl::Enable(gl::DEPTH_TEST);
             } else {
@@ -223,7 +275,7 @@ pub fn run () {
 
             //clear screen
             gl::ClearColor(1.0, 1.0, 1.0, 1.0);
-            gl::Clear(gl::COLOR_BUFFER_BIT);
+            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
 
             // init matrice for MVP
             let model_matrix = Matrix4::identity();
@@ -262,6 +314,58 @@ pub fn run () {
             gl::BindTexture(gl::TEXTURE_2D, surface_texture_id as u32);
             vertex.draw();
             gl::BindTexture(gl::TEXTURE_2D, 0);
+            gl::BindFramebuffer(gl::FRAMEBUFFER, 0);
+            if depth_test_frame {
+                gl::Enable(gl::DEPTH_TEST);
+            } else {
+                gl::Disable(gl::DEPTH_TEST);
+            }
+            if blend_frame {
+                gl::Enable(gl::BLEND);
+                gl::BlendFunc(gl::SRC_ALPHA, gl::ONE_MINUS_SRC_ALPHA);
+            } else {
+                gl::Disable(gl::BLEND);
+            }
+            if wireframe_frame {
+                gl::PolygonMode(gl::FRONT_AND_BACK, gl::LINE);
+            } else {
+                gl::PolygonMode(gl::FRONT_AND_BACK, gl::FILL);
+            }
+            if culling_frame {
+                gl::Enable(gl::CULL_FACE);
+            } else {
+                gl::Disable(gl::CULL_FACE);
+            }
+
+            // clear screen
+            gl::ClearColor(0.0, 0.0, 0.0, 1.0);
+            gl::Clear(gl::COLOR_BUFFER_BIT | gl::DEPTH_BUFFER_BIT);
+            frame_buffer.bind_as_texture();
+
+            match shader_mode {
+                ShaderMode::General => {
+                    screen_shader.use_program();
+                }
+                ShaderMode::Sphere => {
+                    screen_shader_sphere.use_program();
+                }
+                ShaderMode::Bloom => {
+                    screen_shader_bloom.use_program();
+                }
+                ShaderMode::RetroTV => {
+                    screen_shader_retro_tv.use_program();
+                    #[rustfmt::skip]
+                    screen_shader_retro_tv
+                        .set_float(c_str!("uScreenHeight"), WINDOW_HEIGHT as f32);
+                    let now_time = std::time::Instant::now();
+                    screen_shader_retro_tv
+                        .set_float(c_str!("uTime"), (now_time - start_time).as_secs_f32());
+                }
+            }
+
+            screen_vertex.draw();
+            gl::BindTexture(gl::TEXTURE_2D, 0);
+
             imgui_sdl2_context.prepare_frame(
                 imgui_context.io_mut(),
                 &window,
@@ -269,7 +373,7 @@ pub fn run () {
             );
             let ui = imgui_context.frame();
             imgui::Window::new(im_str!("Information"))
-                .size([300.0, 300.0], imgui::Condition::FirstUseEver)
+                .size([300.0, 450.0], imgui::Condition::FirstUseEver)
                 .build(&ui, || {
                     ui.separator();
                     ui.text(im_str!("FPS: {:.1}", ui.io().framerate));
@@ -298,6 +402,27 @@ pub fn run () {
                     #[rustfmt::skip]
                     imgui::Slider::new(im_str!("Camera Z"))
                         .range(-5.0..=5.0).build(&ui, &mut camera_z);                    
+                    ui.separator();
+                    ui.text(im_str!("FBO Shader"));
+                    if ui.button(im_str!("General"), [60.0, 20.0]) {
+                        shader_mode = ShaderMode::General;
+                    }
+                    ui.same_line(80.0);
+                    if ui.button(im_str!("Sphere"), [60.0, 20.0]) {
+                        shader_mode = ShaderMode::Sphere;
+                    }
+                    ui.same_line(150.0);
+                    if ui.button(im_str!("Bloom"), [60.0, 20.0]) {
+                        shader_mode = ShaderMode::Bloom;
+                    }
+                    ui.same_line(220.0);
+                    if ui.button(im_str!("RetroTV"), [60.0, 20.0]) {
+                        shader_mode = ShaderMode::RetroTV;
+                    }
+                    ui.checkbox(im_str!("Depth Test for FBO"), &mut depth_test_frame);
+                    ui.checkbox(im_str!("Blend for FBO"), &mut blend_frame);
+                    ui.checkbox(im_str!("Wireframe for FBO"), &mut wireframe_frame);
+                    ui.checkbox(im_str!("Culling for FBO"), &mut culling_frame);
                 });
                 imgui::Window::new(im_str!("Light"))
                 .size([300.0, 450.0], imgui::Condition::FirstUseEver)
@@ -379,4 +504,35 @@ pub fn run () {
         }
         ::std::thread::sleep(Duration::new(0, 1_000_000_000u32 / 60));
     }
+}
+
+fn new_screen_vertex_vec(
+    left: f32,
+    top: f32,
+    right: f32,
+    bottom: f32,
+    division: i32,
+) -> std::vec::Vec<f32> {
+    let mut vertex_vec: std::vec::Vec<f32> = std::vec::Vec::new();
+    for x in 0..division {
+        for y in 0..division {
+            let l = left + (right - left) / division as f32 * x as f32;
+            let r = left + (right - left) / division as f32 * (x + 1) as f32;
+            let t = left + (bottom - top) / division as f32 * y as f32;
+            let b = left + (bottom - top) / division as f32 * (y + 1) as f32;
+
+            let lc = 1.0 / division as f32 * x as f32;
+            let rc = 1.0 / division as f32 * (x + 1) as f32;
+
+            let tc = 1.0 / division as f32 * y as f32;
+            let bc = 1.0 / division as f32 * (y + 1) as f32;
+            vertex_vec.extend([l, t, 0.0, lc, tc].iter().cloned());
+            vertex_vec.extend([r, t, 0.0, rc, tc].iter().cloned());
+            vertex_vec.extend([l, b, 0.0, lc, bc].iter().cloned());
+            vertex_vec.extend([l, b, 0.0, lc, bc].iter().cloned());
+            vertex_vec.extend([r, t, 0.0, rc, tc].iter().cloned());
+            vertex_vec.extend([r, b, 0.0, rc, bc].iter().cloned());
+        }
+    }
+    vertex_vec
 }

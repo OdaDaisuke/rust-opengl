@@ -63,7 +63,6 @@ impl Shader {
             let id = gl::CreateProgram();
             gl::AttachShader(id, vertex);
             gl::AttachShader(id, fragment);
-            // アタッチしたシェーダーを実行可能な形式に生成。
             gl::LinkProgram(id);
             shader.check_compile_errors(id, "PROGRAM");
 
